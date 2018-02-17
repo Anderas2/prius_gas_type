@@ -1,4 +1,12 @@
 
+At the gas station, i have the habit switch between SP98 and E10. E10 is sold around 10 cents less expensive, however, the car consumes more of it per 100km. E10 contains 10% alcohol and is otherwise "super" fuel, sold as "95" in some countries. SP98 is the fuel sold as "super plus" or "super 98".
+
+My question is: Is this higher consumption of E10 eating the better price or not? Asked the other way round: Is E10 fuel in the end really less expensive or not?
+
+This consumption difference between two fuels is difficult to find because my car uses more or less gas depending on the weather, the traffic conditions, my personal mood, the speed, and the length of the route. For this first try, i did not connect to the CAN bus, so i had no information about the motor temperature and only one measurement per ride, taken by hand. As if it was not difficult enough, the Prius needs only one refill per month, so the season was changing while i did the recording.
+
+I orient myself on an R script of [Victor Chernozhukov](http://www.mit.edu/~vchern/); who was beautifully extracting the influence on being female on the salary. However, he used R which i don't know, so i try to repeat this in python. 
+
 
 ```python
 import statsmodels.api as sm
@@ -10,14 +18,6 @@ from patsy import dmatrices
     C:\Users\Andreas\Anaconda3\lib\site-packages\statsmodels\compat\pandas.py:56: FutureWarning: The pandas.core.datetools module is deprecated and will be removed in a future version. Please use the pandas.tseries module instead.
       from pandas.core import datetools
     
-
-At the gas station, i have the habit switch between SP98 and E10. E10 is sold around 10 cents less expensive, however, the car consumes more of it per 100km. 
-
-My question is: Is this overconsumption eating the better price of the E10 fuel or not? Asked the other way round: Is E10 fuel in the end really less expensive or not?
-
-This consumption difference between two fuels is difficult to find because my car uses mor or less gas depending on the weather, the traffic conditions, my personal mood, the speed, and the length of the route. For this first try, i did not connect myself to the CAN bus, so i had no information about the motor temperature and only one measurement per ride. As if it was not difficult enough, the Prius needs only one refill per month, so the season was changing while i did the recording.
-
-This is a test for the statsmodels api - sklearn wasn't exactly able to do everyhting with regression that i wanted to do. 
 
 
 ```python
@@ -230,148 +230,6 @@ print(predictors_df.round(2))
     
 
 So far how it *should* work. Sadly, i am absolutely not sure about the second step, where the two coefficient vectors were fitted to each other. Also, sklearn does not offer confidence intervals - so i don't know how reliable this result really is - or if it is a result at all.
-
-I have, however, an example from the MIT by [Victor Chernozhukov](http://www.mit.edu/~vchern/). It is written in R. I will now try to use step by step with the help of statsmodels and see what comes out.
-
-
-```python
-y, X = dmatrices('consume ~ gas_type + distance + speed + speedsquare + temp_diff + AC + rain', 
-                 data=df, return_type='dataframe')
-X.head(3)
-```
-
-
-
-
-<div>
-<style>
-    .dataframe thead tr:only-child th {
-        text-align: right;
-    }
-
-    .dataframe thead th {
-        text-align: left;
-    }
-
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-</style>
-<table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: right;">
-      <th></th>
-      <th>Intercept</th>
-      <th>gas_type[T.SP98]</th>
-      <th>distance</th>
-      <th>speed</th>
-      <th>speedsquare</th>
-      <th>temp_diff</th>
-      <th>AC</th>
-      <th>rain</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>28.0</td>
-      <td>26.0</td>
-      <td>676.0</td>
-      <td>9.5</td>
-      <td>0.0</td>
-      <td>0.0</td>
-    </tr>
-    <tr>
-      <th>1</th>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>12.0</td>
-      <td>30.0</td>
-      <td>900.0</td>
-      <td>8.5</td>
-      <td>0.0</td>
-      <td>0.0</td>
-    </tr>
-    <tr>
-      <th>2</th>
-      <td>1.0</td>
-      <td>0.0</td>
-      <td>11.2</td>
-      <td>38.0</td>
-      <td>1444.0</td>
-      <td>6.5</td>
-      <td>0.0</td>
-      <td>0.0</td>
-    </tr>
-  </tbody>
-</table>
-</div>
-
-
-
-What i like here: Automatically a constant is attached (Intercept). It also automatically one-hot-encoded the gas_type column. It means it would also split AC and rain a work that i did before entering into Python.
-
-
-```python
-# prepare a model without gas type and fit it on consume
-y_o, X_outcome = dmatrices('consume ~ distance + speed + speedsquare + temp_diff + AC + rain', 
-                 data=df, return_type='dataframe')
-rgr_y = sm.OLS(y, X_outcome)
-res_y = rgr_y.fit()
-
-# prepare a model that is fit on the gas type
-y_t, X_treatment = dmatrices('gas_type_num ~ distance + speed + speedsquare + temp_diff + AC + rain', 
-                 data=df, return_type='dataframe')
-rgr_d = sm.OLS(y, X_treatment)
-res_d = rgr_y.fit()
-
-# get the residuals of both models
-t_Y = res_y.params
-t_D = res_d.params
-
-# fit the residuals of one model to the other, as a result
-# removing all but one factor
-y_out, X_output = dmatrices('t_Y ~ t_D')
-rgr_out = sm.OLS(y, X_output)
-res_out = rgr_out.fit()
-
-#partials = sm.OLS('t_Y ~ t_D')
-
-```
-
-
-```python
-res_out
-```
-
-
-    ---------------------------------------------------------------------------
-
-    ValueError                                Traceback (most recent call last)
-
-    <ipython-input-90-329420533bbc> in <module>()
-    ----> 1 res_out.conf_int_el(param_num=1)
-    
-
-    C:\Users\Andreas\Anaconda3\lib\site-packages\statsmodels\regression\linear_model.py in conf_int_el(self, param_num, sig, upper_bound, lower_bound, method, stochastic_exog)
-       2599                                       stochastic_exog=stochastic_exog)[0]-r0
-       2600         lowerl = optimize.brenth(f, lower_bound,
-    -> 2601                              self.params[param_num])
-       2602         upperl = optimize.brenth(f, self.params[param_num],
-       2603                              upper_bound)
-    
-
-    C:\Users\Andreas\Anaconda3\lib\site-packages\scipy\optimize\zeros.py in brenth(f, a, b, args, xtol, rtol, maxiter, full_output, disp)
-        526     if rtol < _rtol:
-        527         raise ValueError("rtol too small (%g < %g)" % (rtol, _rtol))
-    --> 528     r = _zeros._brenth(f,a, b, xtol, rtol, maxiter, args, full_output, disp)
-        529     return results_c(full_output, r)
-    
-
-    ValueError: f(a) and f(b) must have different signs
-
 
 
 ```python
