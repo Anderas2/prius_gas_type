@@ -188,8 +188,7 @@ As i am fairly confident with sklearn by now, first i tried to do the inference 
 Basically, if you want to extract the influence of one feature, you remove it from the feature space together with the target variable. 
 Then you fit the regression on the target variable, `consume` in my case, and a second regression on the feature to be extracted: `gas_type` in my case.
 
-Then comes a step that i don't fully understand: You fit the coefficients of the two regressions on each other, and the outcome shall be a number in the unit of the target variable, depicting the result.
-Could you check the marked part below? I don't trust myself here!
+Finally, you fit the residuals of both regressions on each other to extract only the influence of the last variable: The influence of the gas type on the consume.
 
 
 ```python
