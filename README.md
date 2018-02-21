@@ -2,7 +2,7 @@
 <img src="gas_station_orig.jpg">
 
 
-At the gas station, i have the habit switch between SP98 and E10. E10 is sold around less expensive, however, the car consumes more of it per 100km. By feeling i would say it is between 0.5 and 1 liter more per 100km - which is, taken by logic, ridiculous lots.
+At the gas station, i have the habit switch between SP98 and E10. E10 is sold less expensive, however, the car consumes more of it per 100km. By feeling i would say it is between 0.5 and 1 liter more per 100km - which is, taken by logic, ridiculous lots, so i didn't believe my feeling.
 
 I want to try and find the real impact on the consumption today. My question is: Is this higher consumption of E10 eating the better price or not? Asked the other way round: Is E10 fuel in the end really less expensive or not?
 
