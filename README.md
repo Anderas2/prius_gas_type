@@ -1,7 +1,18 @@
 
-At the gas station, i have the habit switch between SP98 and E10. E10 is sold around 10 cents less expensive, however, the car consumes more of it per 100km. E10 contains 10% alcohol and is otherwise "super" fuel, sold as "95" in some countries. SP98 is the fuel sold as "super plus" or "super 98".
+<img src="gas_station_orig.jpg">
 
-My question is: Is this higher consumption of E10 eating the better price or not? Asked the other way round: Is E10 fuel in the end really less expensive or not?
+
+At the gas station, i have the habit switch between SP98 and E10. E10 is sold around less expensive, however, the car consumes more of it per 100km. By feeling i would say it is between 0.5 and 1 liter more per 100km - which is, taken by logic, ridiculous lots.
+
+I want to try and find the real impact on the consumption today. My question is: Is this higher consumption of E10 eating the better price or not? Asked the other way round: Is E10 fuel in the end really less expensive or not?
+
+
+```python
+E10_price = 1.379
+SP98_price = 1.459
+```
+
+E10 contains 10% alcohol and is otherwise "super" fuel, sold as "95" in some countries. SP98 is the fuel sold as "super plus" or "super 98".
 
 This consumption difference between two fuels is difficult to find because my car uses more or less gas depending on the weather, the traffic conditions, my personal mood, the speed, and the length of the route. For this first try, i did not connect to the CAN bus, so i had no information about the motor temperature and only one measurement per ride, taken by hand. As if it was not difficult enough, the Prius needs only one refill per month, so the season was changing while i did the recording.
 
@@ -10,14 +21,12 @@ I orient myself on an R script of [Victor Chernozhukov](http://www.mit.edu/~vche
 
 ```python
 import statsmodels.api as sm
+import statsmodels.formula.api as smf
+from sklearn.linear_model import LinearRegression
 import pandas as pd
 import numpy as np
 from patsy import dmatrices
 ```
-
-    C:\Users\Andreas\Anaconda3\lib\site-packages\statsmodels\compat\pandas.py:56: FutureWarning: The pandas.core.datetools module is deprecated and will be removed in a future version. Please use the pandas.tseries module instead.
-      from pandas.core import datetools
-    
 
 
 ```python
@@ -136,12 +145,24 @@ df.head(5)
 
 
 ```python
+# indicator if the heating was not used at all
+df['heating_off']=df['temp_inside'].isnull()
 # if the heating was turned completely off, replace the inside temperature by the outside temperature
 df['temp_inside'].fillna(df['temp_outside'], inplace=True)
 # get the temperature difference
 df['temp_diff'] = df['temp_inside'] - df['temp_outside']
-# add the square of the speed to the frame
-df['speedsquare'] = df['speed']**2
+df['temp_diff_square'] = df['temp_diff']**2
+# add the square and cube of the speed to the frame
+df['speedsquare'] = df['speed']**2  # 5% better accuracy
+df['speedcube'] =  df['speed']**3  # 1% better accuracy
+
+# add an indicator for the heat up phase to the frame
+# it is a timer that measures roughly 15 minutes from start indirectly via distance and speed,
+# and then uses a sigmoid function to cut off. 5% better accuracy
+df['startphase'] = 1 / (1 + np.exp( ((df['distance']/(df['speed']/12)) -3.3)/0.4 ))
+
+# heating costs extra in the startphase, later not so much
+df['start_heating'] = df['startphase'] * df['temp_diff'] #0.3% better accuracy
 
 # translate the gas type to something machine readable
 def gastype(in_string):
@@ -151,20 +172,16 @@ def gastype(in_string):
     else:
         return 1
 df['gas_type_num']= df['gas_type'].apply(gastype)
-df.groupby(by='gas_type')['consume'].mean()
+print(df.groupby(by='gas_type')['consume'].mean().round(2))
 ```
 
-
-
-
     gas_type
-    E10     5.193750
-    SP98    5.277174
+    E10     5.18
+    SP98    5.28
     Name: consume, dtype: float64
+    
 
-
-
-So yes there is indeed an impact of the gas type. Contrary to my real life experience it looks as if SP98 makes my car consume more! This is because i used SP98 throughout the winter while E10 was used before and after, unintentionally.
+So yes there is indeed an impact of the gas type. Contrary to my real life experience it looks as if SP98 makes my car consume more, and that the difference is very small! This is because i used SP98 throughout the winter, while E10 was used before and after. I need to refill only once per month so it is difficult to have both gas types in the same season.
 
 As i am fairly confident with sklearn by now, first i tried to do the inference with sklearn regression analyses.
 
@@ -177,15 +194,16 @@ Could you check the marked part below? I don't trust myself here!
 
 ```python
 # make numpy vectors for prediction
-prediction_values = ['distance', 'speed', 'speedsquare', 'temp_diff', 'AC', 'rain']
-all_values = ['gas_type_num','consume','distance', 'speed', 'speedsquare', 'temp_diff', 'AC', 'rain']
+prediction_values = ['distance','start_heating', 'startphase', 
+                     'speed', 'speedsquare', 'speedcube', 
+                     'temp_diff', 'temp_diff_square', 'temp_outside', 
+                     'heating_off', 'AC', 'rain']
 
 X = df[prediction_values].values
 Y = df['consume'].values
 Y_gas = df['gas_type_num'].values
 
 # apply regression
-from sklearn.linear_model import LinearRegression
 rgr = LinearRegression()
 rgr.fit(X, Y)
 
@@ -193,43 +211,105 @@ rgr.fit(X, Y)
 rgr_gas = LinearRegression()
 rgr_gas.fit(X, Y_gas)
 
-#####################################################################################
-# do inference: This is the part that i don't understand! Could you please help here?
+# get the residuals (the not-yet-explained variance left in the data)
+Y_residuals = Y - rgr.predict(X)
+X_gas_residuals = Y - rgr_gas.predict(X)
+
+# fit the residuals to get the influence of the gas type
+# reshape(-1,1) is necessary since scikit 19 if you have a single feature
 rgr_inference = LinearRegression()
-rgr_inference.fit(rgr.coef_.reshape(-1,1), rgr_gas.coef_)
-difference = rgr_inference.coef_[0]
-
-
+rgr_inference.fit(X_gas_residuals.reshape(-1,1), Y_residuals)
+difference = rgr_inference.coef_[0] # there is only one coef, but given as list of one. :-)
 
 print('\nThe result after crossfitting two regressions to get the effect of gas sorts:')
 print('The difference in consumption between E10 and SP98 is {:.2f} liter.'.format(difference))
-print('Assuming a price difference of 10 Cents, E10 = 1,40€ and SP98 = 1,50€')
-low_consume = df['consume'].mean() *1.5
-high_consume = (difference + df['consume'].mean()) * 1.4
-price_difference = high_consume - low_consume
-print('it means that 100km cost {:.2f} cents more with the supposedly cheaper E10.'.format(price_difference))
 
+
+# out of interest - what was the influence of the other factors?
 print('\n\nThe importance of the other factors (F-Values)')
 from sklearn.feature_selection import f_regression
 F, pval = f_regression(X, Y)
 predictors_df = pd.DataFrame(columns=prediction_values)
-predictors_df.loc['predictors'] = F
-print(predictors_df.round(2))
+predictors_df.loc['F-value of predictor'] = F
+print(predictors_df.round(2).transpose())
+print('\nAnd R² of the model:{:.3f}'.format(rgr.score(X, Y)))
 ```
 
     
     The result after crossfitting two regressions to get the effect of gas sorts:
-    The difference in consumption between E10 and SP98 is 0.84 liter.
-    Assuming a price difference of 10 Cents, E10 = 1,40€ and SP98 = 1,50€
-    it means that 100km cost 0.65 cents more with the supposedly cheaper E10.
+    The difference in consumption between E10 and SP98 is 0.70 liter.
     
     
     The importance of the other factors (F-Values)
-                distance  speed  speedsquare  temp_diff    AC  rain
-    predictors      0.68   5.32         2.34       4.95  2.01  2.71
+                      F-value of predictor
+    distance                          1.61
+    start_heating                    17.06
+    startphase                       11.01
+    speed                             9.39
+    speedsquare                       4.16
+    speedcube                         1.64
+    temp_diff                         3.49
+    temp_diff_square                  2.70
+    temp_outside                      2.78
+    heating_off                       0.73
+    AC                                1.27
+    rain                              4.82
+    
+    And R² of the model:0.368
     
 
-So far how it *should* work. Sadly, i am absolutely not sure about the second step, where the two coefficient vectors were fitted to each other. Also, sklearn does not offer confidence intervals - so i don't know how reliable this result really is - or if it is a result at all.
+So far how it *should* work. 
+
+One problem remains: `sklearn` is tuned to predictions and does not offer confidence intervals - so i don't know how reliable this result really is - or if it is a result at all. So i head over to `statsmodels` now.
+
+
+```python
+# prepare dataframe for statsmodels
+residuals = pd.DataFrame(Y_residuals, columns=['consume'])
+residuals['E10']=X_gas_residuals
+
+# fit regression in statsmodels format.
+# it's like sklearn rgr.fit(E10, consume)
+results = smf.ols('consume ~ E10', data=residuals).fit()
+
+# get the result out of the vast array of available values
+consume = results.conf_int().loc['E10']
+
+print("The car uses between {:.2f} and {:.2f} L/100km more gas with E10, with 95% confidence".format(
+            consume[0], consume[1]))
+
+# assuming the difference is the beta of E10: attention, this
+# is true only if the factor E10 is completely independent
+difference = results.params[1]
+
+#output results
+print("\nThe mid point is {:.2f}L/100km".format(difference))
+print('Here, E10 costs {:1.2f}€ and SP98 costs {:1.2f}€.\n\nSo, for 100 km:'.format(E10_price, SP98_price))
+print('E10  consume: {:.2f}L and cost {:.3f}€'.format(df['consume'].mean() + (difference/2), 
+                                                   df['consume'].mean() + (difference/2) * E10_price))
+print('SP98 consume: {:.2f}L and cost {:.3f}€'.format(df['consume'].mean() - (difference/2), 
+                                                   df['consume'].mean() - (difference/2) * SP98_price))
+```
+
+    The car uses between 0.62 and 0.77 L/100km more gas with E10, with 95% confidence
+    
+    The mid point is 0.70L/100km
+    Here, E10 costs 1.38€ and SP98 costs 1.46€.
+    
+    So, for 100 km:
+    E10  consume: 5.58L and cost 5.717€
+    SP98 consume: 4.89L and cost 4.727€
+    
+
+That's a pretty clear result. 
+
+Influence factor partialling out is a really cool feature of linear regression! :-)
+
+I hope you had some fun reading this notebook - 
+
+I will continue now and see how E80 gas behaves in my car. The measurement will again take some months, so don't wait in front of your screen for it. :-)
+
+<img src="gas_station_correct.jpg">
 
 
 ```python
